@@ -424,7 +424,14 @@ const TEST_FILTERS: TestFilter[] = [
       'ignores NaNs'  // Doesn't yet ignore NaN
     ]
   },
-  {include: 'image.transform'}
+  {include: 'image.transform'},
+  {
+    include: 'mod',
+    excludes: [
+      'broadcasts 2x1 Tensor2D and 2x2 Tensor2D'  // Broadcasting along inner
+                                                  // dims not supported yet.
+    ]
+  },
 ];
 
 const customInclude = (testName: string) => {
