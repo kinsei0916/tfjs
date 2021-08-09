@@ -15,7 +15,6 @@
  * =============================================================================
  */
 
-import '@tensorflow/tfjs-backend-webgl';
 import '@tensorflow/tfjs-backend-cpu';
 
 // tslint:disable-next-line: no-imports-from-dist
@@ -325,7 +324,14 @@ const TEST_FILTERS: TestFilter[] = [
     ]
   },
   {include: 'addN', excludes: []},
-  {include: 'subtract ', excludes: []},
+  {startsWith: 'floorDiv ', excludes: []},
+  {
+    startsWith: 'sub ',
+    excludes: [
+      'gradient'  // gradient function not found.
+    ]
+  },
+  {startsWith: 'subtract ', excludes: []},
   {
     include: 'square',
     excludes: [
@@ -600,7 +606,7 @@ const TEST_FILTERS: TestFilter[] = [
   {
     startsWith: 'tile ',
     excludes: [
-      'gradient'      // gradient function not found.
+      'gradient'  // gradient function not found.
     ]
   },
   {

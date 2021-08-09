@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 # Copyright 2021 Google LLC. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,21 +12,35 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
+load("@build_bazel_rules_nodejs//:index.bzl", "nodejs_binary")
+load("//tools:defaults.bzl", "ts_library")
 
-set -e
+package(default_visibility = ["//visibility:public"])
 
-DEPS_DIR="./deps"
-if [ ! -d ${DEPS_DIR} ] || [ ! "$(ls -A ${DEPS_DIR})" ]; then
-    echo "ERROR: TFLite web API not downloaded yet. Run './scripts/download-tflite-web-api.sh {version}' first."
-    exit 1
-fi
+exports_files(
+    [
+        "karma_template.conf.js",
+        "rollup_template.config.js",
+    ],
+    visibility = ["//visibility:public"],
+)
 
-yarn rimraf dist/
-mkdir -p dist
-yarn
+ts_library(
+    name = "enumerate_tests_lib",
+    srcs = [
+        "enumerate-tests.ts",
+    ],
+    deps = [
+        "@npm//@types/argparse",
+        "@npm//@types/node",
+        "@npm//argparse",
+    ],
+)
 
-cp ${DEPS_DIR}/* dist/
-yarn build
-yarn rollup -c --visualize --npm
-
-echo "Stored standalone library at dist/tf-tflite(.min).js"
+nodejs_binary(
+    name = "enumerate_tests_bin",
+    data = [
+        ":enumerate_tests_lib",
+    ],
+    entry_point = "enumerate-tests.ts",
+)

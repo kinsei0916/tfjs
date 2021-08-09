@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 # Copyright 2021 Google LLC. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,23 +13,9 @@
 # limitations under the License.
 # =============================================================================
 
-# Before you run this script, do this:
-# 1) Update the version in package.json
-# 2) Run ./scripts/build-npm from the base dir of the project.
+package(default_visibility = ["//visibility:public"])
 
-# Then:
-# 3) Checkout the master branch of this repo.
-# 4) Run this script as `./scripts/publish-npm.sh` from the project base dir.
-
-set -e
-
-BRANCH=`git rev-parse --abbrev-ref HEAD`
-
-if [ "$BRANCH" != "master" ]; then
-  echo "Error: Switch to the master branch before publishing."
-  exit
-fi
-
-yarn build-npm
-npm publish
-echo 'Yay! Published a new package to npm.'
+sh_binary(
+    name = "download_tflite_web_api",
+    srcs = ["download-tflite-web-api.sh"],
+)
