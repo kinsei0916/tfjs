@@ -15,13 +15,20 @@
  * =============================================================================
  */
 
-export function getWorkGroupSizeString(workGroupSize: [number, number, number]):
-    string {
-  if (workGroupSize == null) {
-    return '';
-  }
-  return `
-  [[stage(compute), workgroup_size(${workGroupSize[0]}, ${workGroupSize[1]}, ${
-      workGroupSize[2]})]]
-`;
-}
+import * as tf from '@tensorflow/tfjs-core';
+// tslint:disable-next-line: no-imports-from-dist
+import {describeWithFlags} from '@tensorflow/tfjs-core/dist/jasmine_util';
+
+import {WEBGL_ENVS} from '../backend_webgl_test_registry';
+
+describeWithFlags('ArgMax', WEBGL_ENVS, () => {
+  it('handles packed inputs', async () => {
+    const a = tf.tensor2d([3, -1, 0, 100, -7, 2], [2, 3]);
+
+    // pack a using the add op which packs outputs
+    tf.env().set('WEBGL_PACK', true);
+    const aPacked = tf.addN([a, tf.zeros(a.shape)]);
+
+    tf.test_util.expectArraysEqual(await tf.argMax(aPacked).data(), [1, 0, 1]);
+  });
+});
