@@ -384,13 +384,7 @@ const TEST_FILTERS: TestFilter[] = [
   {include: 'sparseReshape'},
   {include: 'sparseSegmentMean'},
   {include: 'sparseSegmentSum'},
-  {
-    include: 'mod',
-    excludes: [
-      'broadcasts 2x1 Tensor2D and 2x2 Tensor2D'  // Broadcasting along inner
-                                                  // dims not supported yet.
-    ]
-  },
+  {include: 'mod'},
 ];
 
 const customInclude = (testName: string) => {

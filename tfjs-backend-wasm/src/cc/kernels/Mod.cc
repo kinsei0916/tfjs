@@ -49,15 +49,17 @@ extern "C" {
 #ifdef __EMSCRIPTEN__
 EMSCRIPTEN_KEEPALIVE
 #endif
-void Mod(const int a_id, const size_t* a_shape_ptr, const int a_shape_len,
-         const int b_id, const size_t* b_shape_ptr, const int b_shape_len,
-         const DType dtype, const int out_id) {
+void Mod(const size_t a_id, const size_t* a_shape_ptr, const size_t a_shape_len,
+         const size_t b_id, const size_t* b_shape_ptr, const size_t b_shape_len,
+         const DType dtype, const size_t out_id) {
   switch (dtype) {
     case DType::float32:
-      binary_f32(a_id, b_id, out_id, mod);
+      binary_f32(a_id, a_shape_ptr, a_shape_len, b_id, b_shape_ptr, b_shape_len,
+                 out_id, mod);
       break;
     case DType::int32:
-      binary_i32(a_id, b_id, out_id, mod);
+      binary_i32(a_id, a_shape_ptr, a_shape_len, b_id, b_shape_ptr, b_shape_len,
+                 out_id, mod);
       break;
     default:
       util::warn("Mod for tensor ids %d and %d failed. Unsupported dtype %d",
