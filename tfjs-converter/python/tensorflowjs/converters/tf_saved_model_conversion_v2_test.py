@@ -438,6 +438,21 @@ class ConvertTest(tf.test.TestCase):
                           ['group1-shard1of1.bin'])
     self.assertIn('weights', weights_manifest[0])
 
+  def test_convert_saved_model_with_frozen_file(self):
+    self._create_saved_model()
+
+    tf_saved_model_conversion_v2.convert_tf_saved_model(
+        os.path.join(self._tmp_dir, SAVED_MODEL_DIR),
+        os.path.join(self._tmp_dir, SAVED_MODEL_DIR),
+        frozen_graph_dir=os.path.join(self._tmp_dir, SAVED_MODEL_DIR)
+    )
+
+    frozen_file_path = os.path.join(self._tmp_dir, SAVED_MODEL_DIR,
+                                    'model.json.frozen')
+    # Check model.json.frozen exist.
+    self.assertTrue(
+        glob.glob(frozen_file_path))
+
   def test_convert_saved_model_with_metadata(self):
     self._create_saved_model()
 
@@ -1027,6 +1042,32 @@ class ConvertTest(tf.test.TestCase):
     with open(os.path.join(tfjs_path, 'model.json'), 'rt') as f:
       model_json = json.load(f)
     self.assertEqual(metadata_json, model_json['userDefinedMetadata']['key'])
+
+  def test_convert_keras_model_to_saved_model(self):
+    keras_model = tf.keras.Sequential(
+        [tf.keras.layers.Dense(1, input_shape=[2])])
+
+    tfjs_path = os.path.join(self._tmp_dir, SAVED_MODEL_DIR)
+    tf_saved_model_conversion_v2.convert_keras_model_to_graph_model(
+        keras_model, tfjs_path)
+
+    # Check model.json and weights manifest.
+    with open(os.path.join(tfjs_path, 'model.json'), 'rt') as f:
+      model_json = json.load(f)
+    self.assertTrue(model_json['modelTopology'])
+    self.assertIsNot(model_json['modelTopology']['versions'], None)
+    signature = model_json['signature']
+    self.assertIsNot(signature, None)
+    self.assertIsNot(signature['inputs'], None)
+    self.assertIsNot(signature['outputs'], None)
+
+    weights_manifest = model_json['weightsManifest']
+    self.assertCountEqual(weights_manifest[0]['paths'],
+                          ['group1-shard1of1.bin'])
+    self.assertIn('weights', weights_manifest[0])
+    self.assertTrue(
+        glob.glob(
+            os.path.join(self._tmp_dir, SAVED_MODEL_DIR, 'group*-*')))
 
 if __name__ == '__main__':
   tf.test.main()

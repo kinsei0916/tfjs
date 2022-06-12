@@ -32,6 +32,9 @@ tfjs_bundle(
     entry_point = "//tfjs-core/src:index.ts",
     external = [
         "crypto",
+    ],
+    leave_as_require = [
+        "crypto",
         "node-fetch",
         "util",
     ],
@@ -86,7 +89,11 @@ copy_file(
 
 pkg_npm(
     name = "tfjs-core_pkg",
-    srcs = ["package.json"],
+    package_name = "@tensorflow/tfjs-core",
+    srcs = [
+        "README.md",
+        "package.json",
+    ],
     tags = ["ci"],
     deps = [
         ":copy_bundles",
@@ -113,11 +120,6 @@ tfjs_web_test(
     static_files = [
         # Listed here so sourcemaps are served
         "//tfjs-core/src:tfjs-core_test_bundle",
-        # For the webworker
-        ":tf-core.min.js",
-        ":tf-core.min.js.map",
-        "//tfjs-backend-cpu:tf-backend-cpu.min.js",
-        "//tfjs-backend-cpu:tf-backend-cpu.min.js.map",
     ],
 )
 
@@ -142,6 +144,8 @@ nodejs_test(
     name = "tfjs-core_node_test",
     data = [
         "//tfjs-backend-cpu/src:tfjs-backend-cpu_lib",
+        "//tfjs-core/src:setup_test_lib",
+        "//tfjs-core/src:test_node_lib",
         "//tfjs-core/src:tfjs-core_lib",
         "//tfjs-core/src:tfjs-core_src_lib",
         "//tfjs-core/src:tfjs-core_test_lib",

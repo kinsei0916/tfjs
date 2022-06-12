@@ -15,9 +15,13 @@ BASE_LINKOPTS = [
     "-s FILESYSTEM=0",
     "-s EXIT_RUNTIME=0",
     "-s EXPORTED_FUNCTIONS='[\"_malloc\", \"_free\"]'",
-    "-s EXTRA_EXPORTED_RUNTIME_METHODS='[\"cwrap\"]'",
+    "-s EXPORTED_RUNTIME_METHODS='[\"cwrap\"]'",
     "-s MODULARIZE=1",
     "-s MALLOC=emmalloc",
+    # TODO(mattsoulanille): Mark these files as dependencies so Bazel rebuilds
+    # when they change. github.com/emscripten-core/emsdk/issues/933
+    "--pre-js ./tfjs-backend-wasm/src/cc/pre.js",
+    "--post-js ./tfjs-backend-wasm/src/cc/post.js",
 ]
 
 # This build rule generates tfjs-backend-wasm.{js,wasm}.
@@ -57,10 +61,12 @@ cc_binary(
         "-s EXPORT_NAME=WasmBackendModuleThreadedSimd",
         "-s MALLOC=emmalloc",
         "-s USE_PTHREADS=1",
-        "-s PROXY_TO_PTHREAD=1",
-        # Many x86-64 processors have 2 threads per core, so we divide by 2.
-        "-s PTHREAD_POOL_SIZE=" +
-        "'Math.min(4, Math.max(1, (navigator.hardwareConcurrency || 1) / 2))'",
+        # Pre-create 8 webworkers (threads). The actual number of threads that
+        # will be used by XNNPACK for creating the threadpool might be fewer. It
+        # is by default set to the number of logical cores which in most cases
+        # should be fewer than 8. It can also be set manually by calling the
+        # `setThreadsCount` API.
+        "-s PTHREAD_POOL_SIZE=8",
     ],
     deps = [
         ":all_kernels",
@@ -99,7 +105,7 @@ tfjs_cc_library(
     deps = [
         ":check_macros",
         ":util",
-        "@xnnpack//:xnnpack_operators_nhwc_f32",
+        "@xnnpack//:xnnpack_for_tfjs",
     ],
 )
 
@@ -120,6 +126,7 @@ tfjs_cc_library(
     hdrs = ["binary.h"],
     deps = [
         ":backend",
+        ":util",
     ],
 )
 
@@ -271,12 +278,14 @@ tfjs_cc_library(
         ":ArgMax",
         ":AvgPool",
         ":BatchMatMul",
+        ":Ceil",
         ":ClipByValue",
         ":Conv2D",
         ":Conv2DBackpropInput",
         ":Cos",
         ":Cosh",
         ":CropAndResize",
+        ":Cumprod",
         ":Cumsum",
         ":DepthToSpace",
         ":DepthwiseConv2dNative",
@@ -318,11 +327,15 @@ tfjs_cc_library(
         ":ResizeBilinear",
         ":Reverse",
         ":RotateWithOffset",
+        ":Round",
         ":ScatterNd",
         ":SelectV2",
         ":Sigmoid",
         ":Sin",
         ":Softmax",
+        ":SparseFillEmptyRows",
+        ":SparseReshape",
+        ":SparseSegmentReduction",
         ":Square",
         ":SquaredDifference",
         ":StridedSlice",
@@ -341,6 +354,7 @@ tfjs_cc_library(
     deps = [
         ":backend",
         ":unary",
+        ":util",
     ],
 )
 
@@ -449,6 +463,16 @@ tfjs_unit_test(
 )
 
 tfjs_cc_library(
+    name = "Ceil",
+    srcs = ["kernels/Ceil.cc"],
+    deps = [
+        ":backend",
+        ":unary",
+        ":util",
+    ],
+)
+
+tfjs_cc_library(
     name = "ClipByValue",
     srcs = ["kernels/ClipByValue.cc"],
     hdrs = ["kernels/ClipByValue.h"],
@@ -510,6 +534,15 @@ tfjs_cc_library(
     deps = [
         ":backend",
         ":interpolate_bilinear_impl",
+        ":util",
+    ],
+)
+
+tfjs_cc_library(
+    name = "Cumprod",
+    srcs = ["kernels/Cumprod.cc"],
+    deps = [
+        ":backend",
         ":util",
     ],
 )
@@ -586,6 +619,7 @@ tfjs_cc_library(
     deps = [
         ":backend",
         ":unary",
+        ":util",
     ],
 )
 
@@ -744,6 +778,36 @@ tfjs_cc_library(
 )
 
 tfjs_cc_library(
+    name = "LogicalNot",
+    srcs = ["kernels/LogicalNot.cc"],
+    deps = [
+        ":backend",
+        ":binary",
+        ":util",
+    ],
+)
+
+tfjs_cc_library(
+    name = "LogicalOr",
+    srcs = ["kernels/LogicalOr.cc"],
+    deps = [
+        ":backend",
+        ":binary",
+        ":util",
+    ],
+)
+
+tfjs_cc_library(
+    name = "LogicalXor",
+    srcs = ["kernels/LogicalXor.cc"],
+    deps = [
+        ":backend",
+        ":binary",
+        ":util",
+    ],
+)
+
+tfjs_cc_library(
     name = "Log",
     srcs = ["kernels/Log.cc"],
     deps = [
@@ -844,6 +908,7 @@ tfjs_cc_library(
     deps = [
         ":backend",
         ":unary",
+        ":util",
     ],
 )
 
@@ -941,6 +1006,7 @@ tfjs_cc_library(
         ":backend",
         ":clamp_impl",
         ":unary",
+        ":util",
     ],
 )
 
@@ -951,6 +1017,7 @@ tfjs_cc_library(
         ":backend",
         ":clamp_impl",
         ":unary",
+        ":util",
     ],
 )
 
@@ -987,6 +1054,16 @@ tfjs_cc_library(
     srcs = ["kernels/RotateWithOffset.cc"],
     deps = [
         ":backend",
+        ":util",
+    ],
+)
+
+tfjs_cc_library(
+    name = "Round",
+    srcs = ["kernels/Round.cc"],
+    deps = [
+        ":backend",
+        ":unary",
         ":util",
     ],
 )
@@ -1059,11 +1136,39 @@ tfjs_unit_test(
 )
 
 tfjs_cc_library(
+    name = "SparseFillEmptyRows",
+    srcs = ["kernels/SparseFillEmptyRows.cc"],
+    deps = [
+        ":backend",
+        ":util",
+    ],
+)
+
+tfjs_cc_library(
+    name = "SparseReshape",
+    srcs = ["kernels/SparseReshape.cc"],
+    deps = [
+        ":backend",
+        ":util",
+    ],
+)
+
+tfjs_cc_library(
+    name = "SparseSegmentReduction",
+    srcs = ["kernels/SparseSegmentReduction.cc"],
+    deps = [
+        ":backend",
+        ":util",
+    ],
+)
+
+tfjs_cc_library(
     name = "Square",
     srcs = ["kernels/Square.cc"],
     deps = [
         ":backend",
         ":unary",
+        ":util",
     ],
 )
 
@@ -1139,6 +1244,7 @@ tfjs_cc_library(
     srcs = ["kernels/Step.cc"],
     deps = [
         ":backend",
+        ":util",
     ],
 )
 

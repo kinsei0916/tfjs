@@ -18,20 +18,18 @@
 import './flags_webgpu';
 import './register_all_kernels';
 
-import {device_util, env, registerBackend} from '@tensorflow/tfjs-core';
-import glslangInit from '@webgpu/glslang/dist/web-devel/glslang.onefile';
+import {env, registerBackend} from '@tensorflow/tfjs-core';
 
 import {WebGPUBackend} from './backend_webgpu';
 import * as webgpu from './webgpu';
 import {isWebGPUSupported} from './webgpu_util';
 
-if (device_util.isBrowser() && isWebGPUSupported()) {
+if (isWebGPUSupported()) {
   registerBackend('webgpu', async () => {
     // Remove it once we figure out how to correctly read the tensor data
     // before the tensor is disposed in profiling mode.
     env().set('CHECK_COMPUTATION_FOR_ERRORS', false);
 
-    const glslang = await glslangInit();
     const gpuDescriptor: GPURequestAdapterOptions = {
       powerPreference: env().get('WEBGPU_USE_LOW_POWER_GPU') ?
           'low-power' :
@@ -39,20 +37,29 @@ if (device_util.isBrowser() && isWebGPUSupported()) {
     };
 
     const adapter = await navigator.gpu.requestAdapter(gpuDescriptor);
-    let deviceDescriptor: GPUDeviceDescriptor = {};
+    const adapterLimits = adapter.limits;
+    const deviceDescriptor: GPUDeviceDescriptor = {};
     const supportTimeQuery = adapter.features.has('timestamp-query');
+    deviceDescriptor.requiredLimits = {
+      'maxComputeWorkgroupStorageSize':
+          adapterLimits.maxComputeWorkgroupStorageSize,
+      'maxComputeWorkgroupsPerDimension':
+          adapterLimits.maxComputeWorkgroupsPerDimension,
+    };
 
     if (supportTimeQuery) {
-      deviceDescriptor = {requiredFeatures: ['timestamp-query' as const]};
+      deviceDescriptor.requiredFeatures = ['timestamp-query' as const];
     } else {
       console.warn(
           `This device doesn't support timestamp-query extension. ` +
-          `Zero will shown for the kernel time when profiling mode is` +
+          `Start Chrome browser with flag ` +
+          `--disable-dawn-features=disallow_unsafe_apis then try again. ` +
+          `Or zero will shown for the kernel time when profiling mode is` +
           `enabled. Using performance.now is not workable for webgpu since` +
           `it doesn't support synchronously to read data from GPU.`);
     }
     const device: GPUDevice = await adapter.requestDevice(deviceDescriptor);
-    return new WebGPUBackend(device, glslang, supportTimeQuery);
+    return new WebGPUBackend(device, supportTimeQuery);
   }, 3 /*priority*/);
 }
 

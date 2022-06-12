@@ -113,6 +113,143 @@ describeWithFlags('conv2dTranspose', ALL_ENVS, () => {
     expectArraysClose(await result.data(), expected);
   });
 
+  it('input=2x2x2,output=3x3x2,f=2,s=2,inDepth=2,p=same', async () => {
+    const origInputDepth = 2;
+    const origOutputDepth = 2;
+    const inputShape: [number, number, number, number] =
+        [1, 2, 2, origOutputDepth];
+    const fSize = 2;
+    const origPad = 'same';
+    const origStride = 2;
+
+    const x = tf.tensor4d([0., 1., 2., 3., 4., 5., 6., 7.], inputShape);
+    const w = tf.tensor4d(
+        [0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15.],
+        [fSize, fSize, origInputDepth, origOutputDepth]);
+
+    const result = tf.conv2dTranspose(
+        x, w, [1, 3, 3, origInputDepth], origStride, origPad);
+    const expected =
+        [1, 3, 5, 7, 3, 13, 9, 11, 13, 15, 43, 53, 5, 23, 41, 59, 7, 33.];
+
+    expect(result.shape).toEqual([1, 3, 3, origInputDepth]);
+    expectArraysClose(await result.data(), expected);
+  });
+
+  it('throws when dimRoundingMode is set and pad is same', async () => {
+    const origInputDepth = 1;
+    const origOutputDepth = 4;
+    const inputShape: [number, number, number, number] =
+        [1, 2, 2, origOutputDepth];
+    const fSize = 2;
+    const origPad = 'same';
+    const origStride = 2;
+    const dimRoundingMode = 'round';
+
+    const x = tf.tensor4d(
+        [
+          1.24, 1.66, 0.9, 1.39, 0.16, 0.27, 0.42, 0.61, 0.04, 0.17, 0.34, 0.28,
+          0., 0.06, 0.14, 0.24
+        ],
+        inputShape);
+    const w = tf.tensor4d(
+        [0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15.],
+        [fSize, fSize, origInputDepth, origOutputDepth]);
+
+    expect(
+        () => tf.conv2dTranspose(
+            x, w, [1, 3, 3, 1], origStride, origPad, dimRoundingMode))
+        .toThrowError();
+  });
+
+  it('throws when dimRoundingMode is set and pad is valid', async () => {
+    const origInputDepth = 1;
+    const origOutputDepth = 4;
+    const inputShape: [number, number, number, number] =
+        [1, 2, 2, origOutputDepth];
+    const fSize = 2;
+    const origPad = 'valid';
+    const origStride = 2;
+    const dimRoundingMode = 'round';
+
+    const x = tf.tensor4d(
+        [
+          1.24, 1.66, 0.9, 1.39, 0.16, 0.27, 0.42, 0.61, 0.04, 0.17, 0.34, 0.28,
+          0., 0.06, 0.14, 0.24
+        ],
+        inputShape);
+    const w = tf.tensor4d(
+        [0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15.],
+        [fSize, fSize, origInputDepth, origOutputDepth]);
+
+    expect(
+        () => tf.conv2dTranspose(
+            x, w, [1, 3, 3, 1], origStride, origPad, dimRoundingMode))
+        .toThrowError();
+  });
+
+  it('throws when dimRoundingMode is set and pad is a non-integer number',
+     async () => {
+       const origInputDepth = 1;
+       const origOutputDepth = 4;
+       const inputShape: [number, number, number, number] =
+           [1, 2, 2, origOutputDepth];
+       const fSize = 2;
+       const origPad = 1.2;
+       const origStride = 2;
+       const dimRoundingMode = 'round';
+
+       const x = tf.tensor4d(
+           [
+             1.24, 1.66, 0.9, 1.39, 0.16, 0.27, 0.42, 0.61, 0.04, 0.17, 0.34,
+             0.28, 0., 0.06, 0.14, 0.24
+           ],
+           inputShape);
+       const w = tf.tensor4d(
+           [
+             0., 1., 2., 3., 4., 5., 6., 7., 8.,
+             9., 10., 11., 12., 13., 14., 15.
+           ],
+           [fSize, fSize, origInputDepth, origOutputDepth]);
+
+       expect(
+           () => tf.conv2dTranspose(
+              x, w, [1, 3, 3, 1], origStride, origPad, dimRoundingMode))
+           .toThrowError();
+     });
+
+  it('throws when dimRoundingMode is set and pad is explicit by non-integer ' +
+         'number',
+     async () => {
+       const origInputDepth = 1;
+       const origOutputDepth = 4;
+       const inputShape: [number, number, number, number] =
+           [1, 2, 2, origOutputDepth];
+       const fSize = 2;
+       const origPad = [[0, 0], [0, 1.1], [0, 1], [0, 0]] as
+           tf.backend_util.ExplicitPadding;
+       const origStride = 2;
+       const dimRoundingMode = 'round';
+
+       const x = tf.tensor4d(
+           [
+             1.24, 1.66, 0.9, 1.39, 0.16, 0.27, 0.42, 0.61, 0.04, 0.17, 0.34,
+             0.28, 0., 0.06, 0.14, 0.24
+           ],
+           inputShape);
+       const w = tf.tensor4d(
+           [
+             0., 1., 2., 3., 4., 5., 6., 7., 8.,
+             9., 10., 11., 12., 13., 14., 15.
+           ],
+           [fSize, fSize, origInputDepth, origOutputDepth]);
+
+       expect(
+           () => tf.conv2dTranspose(
+              x, w, [1, 3, 3, 1], origStride, origPad, dimRoundingMode))
+           .toThrowError();
+     });
+
   // Reference (Python) TensorFlow code:
   //
   // ```py
@@ -316,8 +453,7 @@ describeWithFlags('conv2dTranspose', ALL_ENVS, () => {
     ]);
   });
 
-  it('gradient input=[1,3,3,1] f=[2,2,2,1] s=[1,1] p=explicit',
-     async () => {
+  it('gradient input=[1,3,3,1] f=[2,2,2,1] s=[1,1] p=explicit', async () => {
     const inputDepth = 1;
     const outputDepth = 2;
     const inputShape: [number, number, number, number] = [1, 3, 3, inputDepth];

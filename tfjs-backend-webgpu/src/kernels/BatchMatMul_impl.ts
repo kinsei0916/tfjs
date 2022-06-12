@@ -15,12 +15,15 @@
  * =============================================================================
  */
 
-import {backend_util, env, TensorInfo, util} from '@tensorflow/tfjs-core';
+import {backend_util, broadcast_util, env, TensorInfo, util} from '@tensorflow/tfjs-core';
 
 import {WebGPUBackend} from '../backend_webgpu';
+import {MatMulPackedVec4Program} from '../matmul_packed_vec4_webgpu';
+import {MatMulPackedProgram} from '../matmul_packed_webgpu';
+import {MatMulReduceProgram} from '../matmul_reduce';
+import {MatMulSmallOutputSizeProgram} from '../matmul_small_output_size_webgpu';
+import {WebGPUProgram} from '../webgpu_program';
 
-import {MatMulPackedVec4Program} from './matmul_packed_vec4_webgpu';
-import {MatMulPackedProgram} from './matmul_packed_webgpu';
 import {reshape} from './Reshape';
 
 type BatchMatMulConfig = {
@@ -61,17 +64,8 @@ export function batchMatMulImpl({
   const batchDimA = util.sizeFromShape(outerDimsA);
   const batchDimB = util.sizeFromShape(outerDimsB);
 
-  const batchDimsCompatible =
-      batchDimA === batchDimB || batchDimA === 1 || batchDimB === 1;
-
-  util.assert(
-      aRank >= 2 && bRank >= 2 && batchDimsCompatible,
-      () => `Error in matMul: the input batch dimensions must either be the ` +
-          `same or at least one input batch dimension must be 1. Got input ` +
-          `batch dimensions of (${outerDimsA}) and (${outerDimsB}).`);
-
-  const outShapeOuterDims =
-      batchDimA > batchDimB ? a.shape.slice(0, -2) : b.shape.slice(0, -2);
+  const outShapeOuterDims = broadcast_util.assertAndGetBroadcastShape(
+      a.shape.slice(0, -2), b.shape.slice(0, -2));
   const outShape = outShapeOuterDims.concat([outerShapeA, outerShapeB]);
 
   util.assert(
@@ -94,33 +88,47 @@ export function batchMatMulImpl({
   const intermediates: TensorInfo[] = [a3d, b3d];
 
   const batchDim = Math.max(batchDimA, batchDimB);
+  const batchAEqualOne = batchDimA === 1;
+  const batchBEqualOne = batchDimB === 1;
+  const useVec4 = ((innerShapeA % 4 === 0 && !transposeA) ||
+                   (outerShapeA % 4 === 0 && transposeA)) &&
+      outerShapeB % 4 === 0 && !transposeB;
+  let program: WebGPUProgram;
+  if (outerShapeA * outerShapeB <= 32) {
+    program = new MatMulReduceProgram(
+        [batchDim, outerShapeA, outerShapeB], batchAEqualOne, batchBEqualOne,
+        transposeA, transposeB, bias, activation, preluActivationWeights);
 
-  const useVec4 = a.shape[2] % 4 === 0 && b.shape[2] % 4 === 0 && !transposeA &&
-      !transposeB && outerShapeB >= 32;
-  let program: MatMulPackedProgram|MatMulPackedVec4Program;
-  let dimensions = null;
-  if (useVec4) {
-    // TODO: Currently we need to make sure that a.shape[2] and b.shape[2]
+  } else
+      // When the output size is absolutely small or relatively small, we may
+      // use MatMulSmallOutputSizeProgram to get better performance. Absolutely
+      // small size means that the output size is smaller than [16, 512].
+      // Relatively small size means that one demension size of the output is
+      // smaller than 16, and the output size is also more than or equal two
+      // times smaller than each of the two input sizes. For example, if input
+      // sizes are [12, 2048] and [2048, 1024], the output size is [12, 1024],
+      // which is relatively small compared to input sizes.
+      if (!transposeA && !transposeB &&
+          ((outerShapeA <= 16 &&
+            (outerShapeB <= 512 || innerShapeB >= 2 * outerShapeB)) ||
+           (outerShapeB <= 16 &&
+            (outerShapeA <= 512 || innerShapeA >= 2 * outerShapeA)))) {
+    program = new MatMulSmallOutputSizeProgram(
+        a3dShape, b3dShape, [batchDim, outerShapeA, outerShapeB], bias,
+        activation, preluActivationWeights);
+  } else if (useVec4) {
+    // TODO: Currently we need to make sure that innerShapeA and outerShapeB
     // are divisible by 4 since we use vec4 to get data. In future, we can
     // remove this limitation by insert 0 to pack data.
     program = new MatMulPackedVec4Program(
-        a3dShape, [batchDim, outerShapeA, outerShapeB],
-        env().get('WEBGPU_MATMUL_WORK_PER_THREAD') as number, bias, activation,
-        preluActivationWeights);
-    if (program.useWgsl) {
-      const dimAOuter = a3d.shape[1];
-      const dimInner = a3d.shape[2];
-      const dimBOuter = b3d.shape[2];
-      dimensions = [
-        {type: 'uint32', data: [dimAOuter]},
-        {type: 'uint32', data: [dimBOuter]}, {type: 'uint32', data: [dimInner]}
-      ];
-    }
+        a3dShape, [batchDim, outerShapeA, outerShapeB], batchAEqualOne,
+        batchBEqualOne, transposeA, bias, activation, preluActivationWeights);
   } else {
     program = new MatMulPackedProgram(
         a3dShape, [batchDim, outerShapeA, outerShapeB],
-        env().get('WEBGPU_MATMUL_WORK_PER_THREAD') as number, transposeA,
-        transposeB, bias, activation, preluActivationWeights);
+        env().get('WEBGPU_MATMUL_WORK_PER_THREAD') as number, batchAEqualOne,
+        batchBEqualOne, transposeA, transposeB, bias, activation,
+        preluActivationWeights);
   }
   const inputs: TensorInfo[] = [a3d, b3d];
   if (bias) {
@@ -128,6 +136,14 @@ export function batchMatMulImpl({
   }
   if (preluActivationWeights) {
     inputs.push(preluActivationWeights);
+  }
+  const dimensions = [
+    {type: 'int32', data: [outerShapeA]}, {type: 'int32', data: [outerShapeB]},
+    {type: 'int32', data: [innerShapeA]}
+  ];
+  if (activation === 'leakyrelu') {
+    dimensions.push({type: 'float32', data: [leakyreluAlpha]});
+    program.uniforms += ' alpha : f32,';
   }
   const out = backend.runWebGPUProgram(program, inputs, a.dtype, dimensions);
   const outReshaped =

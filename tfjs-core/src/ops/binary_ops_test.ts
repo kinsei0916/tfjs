@@ -47,6 +47,16 @@ describeWithFlags('prelu', ALL_ENVS, () => {
     expectArraysClose(await result.data(), [0, 1, -0.5, -0.6]);
   });
 
+  it('basic int32', async () => {
+    const x = tf.tensor1d([0, 1, -2, -4], 'int32');
+    const a = [0.15, 0.2, 0.25, 0.15];
+    const result = tf.prelu(x, a);
+
+    expect(result.shape).toEqual([4]);
+    expect(result.dtype).toEqual('float32');
+    expectArraysClose(await result.data(), [0, 1, -0.5, -0.6]);
+  });
+
   it('derivative', async () => {
     const x = tf.tensor1d([0.5, 3, -0.1, -4]);
     const a = tf.tensor1d([0.2, 0.4, 0.25, 0.15]);
@@ -1261,25 +1271,5 @@ describeWithFlags('div', ALL_ENVS, () => {
     const c = a.divNoNan(b);
     expect(c.shape).toEqual(a.shape);
     expectArraysClose(await c.data(), [0, 0, 0, 0]);
-  });
-});
-
-describeWithFlags('floorDiv', ALL_ENVS, () => {
-  it('floorDiv', async () => {
-    const a = tf.tensor1d([10, 20, -20, -40], 'int32');
-    const b = tf.tensor1d([10, 12, 8, 5], 'int32');
-    const result = tf.floorDiv(a, b);
-
-    expect(result.shape).toEqual(a.shape);
-    expectArraysClose(await result.data(), [1, 1, -3, -8]);
-  });
-
-  it('floorDiv vec4', async () => {
-    const a = tf.tensor1d([10, 20, -20, -40], 'int32');
-    const b = tf.tensor1d([10, 12, 8, 5], 'int32');
-    const result = tf.floorDiv(a, b);
-
-    expect(result.shape).toEqual(a.shape);
-    expectArraysClose(await result.data(), [1, 1, -3, -8]);
   });
 });

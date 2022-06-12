@@ -16,11 +16,13 @@
  */
 
 import {env, KernelConfig, KernelFunc} from '@tensorflow/tfjs-core';
-import {FromPixels, FromPixelsAttrs, FromPixelsInputs} from '@tensorflow/tfjs-core';
+import {FromPixels, FromPixelsAttrs, FromPixelsInputs, util} from '@tensorflow/tfjs-core';
 import {backend_util, TensorInfo} from '@tensorflow/tfjs-core';
 
 import {WebGPUBackend} from '../backend_webgpu';
-import {fromPixelsExternalImage} from './FromPixelsExternalImage';
+import {FromPixelsProgram} from '../from_pixels_webgpu';
+
+type ExternalImage = HTMLCanvasElement|ImageBitmap|OffscreenCanvas;
 
 export const fromPixelsConfig: KernelConfig = {
   kernelName: FromPixels,
@@ -43,17 +45,24 @@ export function fromPixels(args: {
     throw new Error('pixels passed to tf.browser.fromPixels() can not be null');
   }
 
-  const outShape = [pixels.height, pixels.width, numChannels];
-  const imageData = (pixels as ImageData | backend_util.PixelData).data;
-
   const isVideo = typeof (HTMLVideoElement) !== 'undefined' &&
       pixels instanceof HTMLVideoElement;
   const isImage = typeof (HTMLImageElement) !== 'undefined' &&
       pixels instanceof HTMLImageElement;
-  const isCanvas = typeof (HTMLCanvasElement) !== 'undefined' &&
-      pixels instanceof HTMLCanvasElement;
+  const isCanvas = (typeof (HTMLCanvasElement) !== 'undefined' &&
+                    pixels instanceof HTMLCanvasElement) ||
+      (typeof (OffscreenCanvas) !== 'undefined' &&
+       pixels instanceof OffscreenCanvas);
   const isImageBitmap =
       typeof (ImageBitmap) !== 'undefined' && pixels instanceof ImageBitmap;
+
+  const [width, height] = isVideo ?
+      [
+        (pixels as HTMLVideoElement).videoWidth,
+        (pixels as HTMLVideoElement).videoHeight
+      ] :
+      [pixels.width, pixels.height];
+  const outShape = [height, width, numChannels];
 
   if (env().getBool('WEBGPU_USE_IMPORT')) {
     if (isVideo) {
@@ -61,6 +70,7 @@ export function fromPixels(args: {
         externalImage: pixels as HTMLVideoElement,
         backend,
         attrs,
+        outShape,
         useImport: true
       });
     }
@@ -70,12 +80,6 @@ export function fromPixels(args: {
     if (fromPixels2DContext == null) {
       fromPixels2DContext = document.createElement('canvas').getContext('2d');
     }
-    const [width, height] = isVideo ?
-        [
-          (pixels as HTMLVideoElement).videoWidth,
-          (pixels as HTMLVideoElement).videoHeight
-        ] :
-        [pixels.width, pixels.height];
     fromPixels2DContext.canvas.width = width;
     fromPixels2DContext.canvas.height = height;
     fromPixels2DContext.drawImage(
@@ -88,12 +92,14 @@ export function fromPixels(args: {
       externalImage: pixels as HTMLCanvasElement | ImageBitmap,
       backend,
       attrs,
+      outShape,
       useImport: false
     });
   }
 
   // TODO: Encoding should happen on GPU once we no longer have to download
   // image data to the CPU.
+  const imageData = (pixels as ImageData | backend_util.PixelData).data;
   let pixelArray = imageData;
   if (numChannels != null && numChannels !== 4) {
     pixelArray = new Uint8Array(pixels.width * pixels.height * numChannels);
@@ -114,5 +120,30 @@ export function fromPixels(args: {
   backend.maybeReleaseBuffer(output.dataId);
 
   backend.uploadToGPU(output.dataId);
+  return output;
+}
+
+function fromPixelsExternalImage(args: {
+  externalImage: ExternalImage|HTMLVideoElement,
+  backend: WebGPUBackend,
+  attrs: FromPixelsAttrs,
+  outShape: number[],
+  useImport: boolean
+}): TensorInfo {
+  const {externalImage, backend, attrs, outShape, useImport} = args;
+  const {numChannels} = attrs;
+
+  const size = util.sizeFromShape(outShape);
+  const strides = util.computeStrides(outShape);
+  const program = new FromPixelsProgram(outShape, useImport);
+
+  const uniformData = [
+    {type: 'uint32', data: [size]}, {type: 'uint32', data: [numChannels]},
+    {type: 'uint32', data: [...strides]},
+    {type: 'uint32', data: [...program.dispatch]}
+  ];
+
+  const output = backend.runFromPixelsProgram(
+      program, outShape, uniformData, useImport, externalImage);
   return output;
 }

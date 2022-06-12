@@ -136,13 +136,13 @@ module.exports = function(config) {
         browser: 'safari',
         browser_version: 'latest',
         os: 'OS X',
-        os_version: 'High Sierra'
+        os_version: 'Catalina'
       },
       bs_ios_11: {
         base: 'BrowserStack',
-        device: 'iPhone X',
+        device: 'iPhone 11',
         os: 'iOS',
-        os_version: '11.0',
+        os_version: '13.0',
         real_mobile: true
       },
       bs_android_9: {
@@ -155,18 +155,16 @@ module.exports = function(config) {
       win_10_chrome: {
         base: 'BrowserStack',
         browser: 'chrome',
-        // Latest Chrome on Windows has WebGL problems:
-        // https://github.com/tensorflow/tfjs/issues/2272
-        browser_version: '77.0',
+        browser_version: 'latest',
         os: 'Windows',
         os_version: '10'
       },
       chrome_simd: {
         base: 'Chrome',
         flags: [
-	  '--enable-features=WebAssemblySimd',
-	  '--disable-features=WebAssemblyThreads',
-	]
+          '--enable-features=WebAssemblySimd',
+          '--disable-features=WebAssemblyThreads',
+        ]
       },
       chrome_threaded_simd: {
         base: 'Chrome',

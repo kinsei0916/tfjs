@@ -18,8 +18,8 @@
 import {backend_util, DepthwiseConv2dNative, DepthwiseConv2dNativeAttrs, DepthwiseConv2dNativeInputs, KernelConfig, KernelFunc} from '@tensorflow/tfjs-core';
 
 import {WebGPUBackend} from '../backend_webgpu';
-import {DepthwiseConv2D3x3Program} from './depthwise_conv2d_3x3_webgpu';
-import {DepthwiseConv2DProgram} from './depthwise_conv2d_webgpu';
+import {DepthwiseConv2D3x3Program} from '../depthwise_conv2d_3x3_webgpu';
+import {DepthwiseConv2DProgram} from '../depthwise_conv2d_webgpu';
 
 export function depthwiseConv2dNative(args: {
   inputs: DepthwiseConv2dNativeInputs,
@@ -40,6 +40,13 @@ export function depthwiseConv2dNative(args: {
       filter.shape as [number, number, number, number], strides, $dilations,
       pad, dimRoundingMode, true /* depthwise */);
 
+  const dimensions = [
+    {type: 'int32', data: [convInfo.padInfo.top, convInfo.padInfo.left]},
+    {type: 'int32', data: [convInfo.strideHeight, convInfo.strideWidth]},
+    {type: 'int32', data: [convInfo.dilationHeight, convInfo.dilationWidth]},
+    {type: 'int32', data: [convInfo.inHeight, convInfo.inWidth]}
+  ];
+
   let program: DepthwiseConv2DProgram|DepthwiseConv2D3x3Program;
   // TODO: To see if we need to relax the limitation. Currently, it's only for
   // filter size 3x3.
@@ -48,18 +55,16 @@ export function depthwiseConv2dNative(args: {
       convInfo.strideWidth === 1 &&
       convInfo.filterHeight === convInfo.filterWidth &&
       convInfo.inChannels === convInfo.outChannels &&
+      convInfo.dilationHeight === 1 && convInfo.dilationWidth === 1 &&
       convInfo.filterHeight === 3 && convInfo.inChannels % 4 === 0) {
     program = new DepthwiseConv2D3x3Program(convInfo);
   } else {
     program = new DepthwiseConv2DProgram(convInfo);
+    dimensions.push(
+        {type: 'int32', data: [convInfo.filterHeight]},
+        {type: 'int32', data: [convInfo.filterWidth]},
+        {type: 'int32', data: [convInfo.outChannels / convInfo.inChannels]});
   }
-
-  const dimensions = [
-    {type: 'int32', data: [convInfo.padInfo.top, convInfo.padInfo.left]},
-    {type: 'int32', data: [convInfo.strideHeight, convInfo.strideWidth]},
-    {type: 'int32', data: [convInfo.dilationHeight, convInfo.dilationWidth]},
-    {type: 'int32', data: [convInfo.inHeight, convInfo.inWidth]}
-  ];
 
   return backend.runWebGPUProgram(program, [x, filter], x.dtype, dimensions);
 }

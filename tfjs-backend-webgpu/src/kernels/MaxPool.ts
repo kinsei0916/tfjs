@@ -18,8 +18,8 @@ import {backend_util, KernelConfig, KernelFunc, MaxPool, MaxPoolAttrs, MaxPoolIn
 
 import {WebGPUBackend} from '../backend_webgpu';
 import {identity} from './Identity';
-import {Pool2DProgram} from './pool2d_webgpu';
-import {PoolWithFilterSizeEqualsOneProgram} from './pool_filtersizeone_webgpu';
+import {Pool2DProgram} from '../pool2d_webgpu';
+import {PoolWithFilterSizeEqualsOneProgram} from '../pool_filtersizeone_webgpu';
 
 export function maxPool(
     args: {inputs: MaxPoolInputs, backend: WebGPUBackend, attrs: MaxPoolAttrs}):
@@ -32,24 +32,27 @@ export function maxPool(
       x.shape as [number, number, number, number], filterSize, strides,
       dilations, pad, dimRoundingMode);
   let program: Pool2DProgram|PoolWithFilterSizeEqualsOneProgram;
+  const dimensions = [];
   if (convInfo.filterHeight === 1 && convInfo.filterWidth === 1) {
     if (util.arraysEqual(convInfo.inShape, convInfo.outShape)) {
       return identity({inputs: {x}, backend});
     }
     program = new PoolWithFilterSizeEqualsOneProgram(convInfo);
+    dimensions.push(
+        {type: 'int32', data: [convInfo.strideHeight, convInfo.strideWidth]});
   } else {
     program = new Pool2DProgram(convInfo, 'max');
+    dimensions.push(
+        {type: 'int32', data: [convInfo.strideHeight, convInfo.strideWidth]},
+        {type: 'int32', data: [convInfo.padInfo.top, convInfo.padInfo.left]}, {
+          type: 'int32',
+          data: [convInfo.dilationHeight, convInfo.dilationWidth]
+        },
+        {type: 'int32', data: [convInfo.inHeight, convInfo.inWidth]}, {
+          type: 'int32',
+          data: [convInfo.effectiveFilterHeight, convInfo.effectiveFilterWidth]
+        });
   }
-
-  const dimensions = [
-    {type: 'int32', data: [convInfo.padInfo.top, convInfo.padInfo.left]},
-    {type: 'int32', data: [convInfo.strideHeight, convInfo.strideWidth]},
-    {type: 'int32', data: [convInfo.dilationHeight, convInfo.dilationWidth]},
-    {type: 'int32', data: [convInfo.inHeight, convInfo.inWidth]}, {
-      type: 'int32',
-      data: [convInfo.effectiveFilterHeight, convInfo.effectiveFilterWidth]
-    }
-  ];
 
   return backend.runWebGPUProgram(program, [x], x.dtype, dimensions);
 }
